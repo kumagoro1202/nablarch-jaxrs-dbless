@@ -1,36 +1,38 @@
-# ディレクトリについての補足
+# nablarch-jaxrs-dbless
 
-| ディレクトリ               | 補足                                                                                                                                                                             |
-|:---------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|db/data/                    |DBに疎通確認用データを格納するためのSQL文。                                                                                                                                       |
-|db/ddl/                     |Nablarchで使用するテーブルを作成するためのDDL。テーブルを作り直すときに使用するDROP文も用意している。                                                                             |
-|h2/bin/                     |H2 Database Engine(以下H2)に格納されているデータを確認するためのツールが格納されている(本プロジェクトは初期状態でH2を使用する構成になっている)。                                  |
-|h2/db/                      |H2のデータファイルが格納されているディレクトリ。H2のデータが壊れた際は、「SAMPLE.mv.db」を削除し、「SAMPLE.mv.db.org」を、「SAMPLE.mv.db」という名前でコピーすることで復旧できる。|
-|src/main/resources/         |設定ファイルを格納するディレクトリ                                                                                                                                                |
-|src/test/resources/         |自動テスト(ユニットテスト)用の設定ファイルを格納するディレクトリ                                                                                                                  |
-|src/main/jib/               |Dockerコンテナに直接配置するファイルを格納するディレクトリ(詳細は[Jibのドキュメント](https://github.com/GoogleContainerTools/jib/tree/master/jib-maven-plugin#adding-arbitrary-files-to-the-image)を参照)|
-|tools/                      |mavenと連携して動作させるツールの設定を格納するディレクトリ                                                                                                                       |
+Nablarch 6u3 の `nablarch-container-jaxrs` アーキタイプから生成したプロジェクトを、DBを使わない構成に変更した検証用プロジェクトです。
 
+## アーキタイプからの変更点
 
-# H2に格納されているデータを確認する方法
+### rest-component-configuration.xml
 
-以下の手順で確認する。
+- 削除：`nablarch/schema-config.xml`、`nablarch/common/code.xml`、`nablarch/core/db-base.xml`、`data-source.xml` の import
+- 削除：ハンドラキューの `dbConnectionManagementHandler`、`transactionManagementHandler`
+- 削除：`initializer` の `codeLoader`、`codeCache`、および `disposer`
+- 追加：`nablarch/core/date/system-date.xml` の import
 
-1.「mvn jetty:run」でアプリを起動している場合は終了させる。
+`systemTimeProvider` は元の構成では `data-source.xml` から間接的に import される `system-date.xml` で定義されています。
+テスティングフレームワークがこのコンポーネントを参照するため、明示的に import しています。
 
-2.h2/bin/h2.batを実行する。
+### その他
 
-3.しばらく待つとブラウザが起動するので、各項目に以下の通りに入力し、[Connect]ボタンをクリックする。
+- `env.properties` / `common.properties`：DB・コード管理・業務日付関連のプロパティを削除
+- `pom.xml`：`nablarch-common-jdbc`、`nablarch-common-dao`、`nablarch-common-code-jdbc`、`nablarch-common-idgenerator-jdbc`、H2、HikariCP、gsp-dba-maven-plugin 関連の設定を削除
+- テスト：`SimpleRestTestSupport` と `nablarch/test/test-data-dbless.xml` を使用
+- DBアクセスを行うサンプル・EDM・DDL を削除し、検証用の `RelayAction` を追加
 
-| 項目     | 値                  |
-|:---------|:--------------------|
-|JDBC URL  |jdbc:h2:../db/SAMPLE |
-|User Name |SAMPLE               |
-|Password  |SAMPLE               |
+## 検証用アクション
 
-4.左側のペインのテーブル名をクリックすると、クリックしたテーブルに対するSELECT文が生成される。
+| パス | 内容 |
+| --- | --- |
+| `GET /relay/ping` | `{"status":"ok"}` を返す |
+| `POST /relay/echo` | 受け取ったJSONを返す（`@Domain` によるバリデーションあり） |
+| `POST /relay/send` | TCPサーバへ1行送信し、応答を返す（接続先はシステムプロパティ `relay.tcp.host` / `relay.tcp.port`、既定値 `localhost:9999`） |
 
-5.[Run]ボタンをクリックすると、生成したSELECT文が実行され、テーブルのデータを確認することができる。
+## 実行方法
 
-6.使用終了時は、左上のdisconnectボタン(赤色で書かれたアイコンのボタン)をクリックして切断する。
-  **切断を忘れると、WebアプリからH2に接続できなくなる。**
+```bash
+mvn test
+mvn jetty:run
+curl http://localhost:9080/relay/ping
+```
